@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Agent Pass — a daily free claim for Agent ID holders</title>
+<style>
+  :root {
+    --bg: #0b0e11;
+    --card: #161a1e;
+    --line: #2b3138;
+    --text: #eaecef;
+    --muted: #848e9c;
+    --accent: #f0b90b;
+    --ok: #2ebd85;
+    --bad: #f6465d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  main { max-width: 560px; margin: 0 auto; padding: 32px 16px 64px; }
+  header { text-align: center; margin-bottom: 24px; }
+  header h1 { margin: 0 0 8px; font-size: 34px; letter-spacing: 1px; }
+  header h1 .accent { color: var(--accent); }
+  header p { margin: 0; color: var(--muted); font-size: 16px; line-height: 1.45; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .card h2 { margin: 0 0 12px; font-size: 15px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .row { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; font-size: 16px; }
+  .row .label { color: var(--muted); }
+  .row .value { font-weight: 600; text-align: right; word-break: break-all; }
+  .ok { color: var(--ok); }
+  .bad { color: var(--bad); }
+  button {
+    width: 100%;
+    padding: 14px;
+    font-size: 17px;
+    font-weight: 700;
+    border: none;
+    border-radius: 10px;
+    background: var(--accent);
+    color: #0b0e11;
+    cursor: pointer;
+  }
+  button:disabled { background: var(--line); color: var(--muted); cursor: not-allowed; }
+  button.secondary { background: transparent; border: 1px solid var(--accent); color: var(--accent); margin-top: 10px; }
+  #status { min-height: 22px; text-align: center; color: var(--muted); margin-top: 12px; font-size: 15px; }
+  .how { color: var(--muted); line-height: 1.55; font-size: 15px; }
+  .how b { color: var(--text); }
+  footer { color: var(--muted); font-size: 13.5px; line-height: 1.55; text-align: center; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>AGENT <span class="accent">PASS</span></h1>
+    <p>A daily free claim for Binance Agent ID holders.<br />
+    One soulbound badge per Agent ID per day — show up, claim, keep your streak.</p>
+  </header>
+
+  <section class="card">
+    <h2>Your status</h2>
+    <div class="row"><span class="label">Wallet</span><span class="value" id="wallet">Not connected</span></div>
+    <div class="row"><span class="label">Agent ID</span><span class="value" id="agentId">—</span></div>
+    <div class="row"><span class="label">Today's claim</span><span class="value" id="today">—</span></div>
+    <div class="row"><span class="label">Your streak</span><span class="value" id="streak">—</span></div>
+    <div class="row"><span class="label">Your badges</span><span class="value" id="badges">—</span></div>
+    <div style="margin-top:14px">
+      <button id="connectBtn">Connect wallet</button>
+      <button id="claimBtn" style="display:none">Claim today's badge</button>
+      <button id="switchBtn" class="secondary" style="display:none">Switch network</button>
+    </div>
+    <div id="status"></div>
+  </section>
+
+  <section class="card">
+    <h2>Everyone</h2>
+    <div class="row"><span class="label">Unique claimers</span><span class="value" id="uniqueClaimers">—</span></div>
+    <div class="row"><span class="label">Total claims</span><span class="value" id="totalClaims">—</span></div>
+    <div class="row"><span class="label">Today (UTC)</span><span class="value" id="todayDate">—</span></div>
+  </section>
+
+  <section class="card how">
+    <h2>How it works</h2>
+    <p><b>1.</b> Hold a Binance Agent ID — the name.ai identity claimed in the
+    Binance app (Wallet &rarr; Agent ID). One per person, non-transferable.</p>
+    <p><b>2.</b> Connect the wallet that holds it. This page checks the official
+    Agent ID registry on-chain — no sign-up, no form.</p>
+    <p><b>3.</b> Claim once per day. Each claim mints a badge that stays in your
+    wallet forever, and claiming on consecutive days grows your streak.</p>
+  </section>
+
+  <footer>
+    Claims are free: the contract takes no payment and asks for no token
+    approvals — you only pay the network gas fee for your own transaction.
+    Badges are soulbound: they cannot be transferred or sold, and they carry
+    no monetary value. Contract:
+    <a id="contractLink" href="#" target="_blank" rel="noopener">view</a>
+  </footer>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.2/dist/ethers.umd.min.js"></script>
+<script>
+"use strict";
+/* =====================================================================
+   CONFIG — the live BSC MAINNET deployment (2026-11-18).
+   Deploy tx: 0x188b965a0a383ee6f363ebc9d1c670673600833656bd45c0b4ecd73248e34b3d
+   ===================================================================== */
+const CONFIG = {
+  chainId: 56, // BNB Chain mainnet
+  chainName: "BNB Chain mainnet",
+  contractAddress: "0xbD46786A6A7d3bEf1fF8386a9190267FdE806592",
+  // The official SPACE ID Agent ID registry:
+  agentIdRegistry: "0x60B9262456dE011F7d15a54CdD8c48bAaa8B022F",
+  explorer: "https://bscscan.com",
+};
+
+const ABI = [
+  "function claim() returns (uint256)",
+  "function hasAgentId(address) view returns (bool)",
+  "function canClaimToday(address) view returns (bool)",
+  "function streakOf(address) view returns (uint256)",
+  "function claimsOf(address) view returns (uint256)",
+  "function balanceOf(address) view returns (uint256)",
+  "function totalClaims() view returns (uint256)",
+  "function uniqueClaimers() view returns (uint256)",
+  "function paused() view returns (bool)",
+  "function currentDay() view returns (uint256)",
+];
+
+const $ = (id) => document.getElementById(id);
+const connectBtn = $("connectBtn"), claimBtn = $("claimBtn"), switchBtn = $("switchBtn");
+
+let provider = null;
+let account = null;
+
+function setStatus(msg) { $("status").textContent = msg || ""; }
+function short(addr) { return addr.slice(0, 6) + "…" + addr.slice(-4); }
+function dayToDate(day) {
+  return new Date(Number(day) * 86400 * 1000).toISOString().slice(0, 10);
+}
+
+function readContract() {
+  return new ethers.Contract(CONFIG.contractAddress, ABI, provider);
+}
+
+async function refreshGlobals() {
+  try {
+    const c = readContract();
+    const [unique, total, day] = await Promise.all([
+      c.uniqueClaimers(), c.totalClaims(), c.currentDay(),
+    ]);
+    $("uniqueClaimers").textContent = unique.toString();
+    $("totalClaims").textContent = total.toString();
+    $("todayDate").textContent = dayToDate(day);
+  } catch { /* contract unreachable (wrong network / not deployed): leave dashes */ }
+}
+
+async function refreshUser() {
+  if (!account) return;
+  const c = readContract();
+  try {
+    const [hasId, canClaim, isPaused, streak, badges] = await Promise.all([
+      c.hasAgentId(account),
+      c.canClaimToday(account),
+      c.paused(),
+      c.streakOf(account),
+      c.balanceOf(account),
+    ]);
+    $("agentId").innerHTML = hasId
+      ? '<span class="ok">Detected ✓</span>'
+      : '<span class="bad">Not found</span>';
+    $("streak").textContent = hasId ? `${streak.toString()} day(s)` : "—";
+    $("badges").textContent = badges.toString();
+
+    if (!hasId) {
+      $("today").textContent = "—";
+      claimBtn.disabled = true;
+      claimBtn.textContent = "An Agent ID is required to claim";
+      setStatus("This wallet holds no Agent ID. Claim one in the Binance app: Wallet → Agent ID, then reconnect.");
+      return;
+    }
+    if (isPaused) {
+      $("today").textContent = "Paused";
+      claimBtn.disabled = true;
+      claimBtn.textContent = "Claims are paused";
+      setStatus("");
+      return;
+    }
+    if (canClaim) {
+      $("today").innerHTML = '<span class="ok">Available</span>';
+      claimBtn.disabled = false;
+      claimBtn.textContent = "Claim today's badge";
+      setStatus("");
+    } else {
+      $("today").textContent = "Already claimed";
+      claimBtn.disabled = true;
+      claimBtn.textContent = "Come back tomorrow (UTC)";
+      setStatus("");
+    }
+  } catch {
+    setStatus("Could not read the contract. Are you on the right network?");
+  }
+}
+
+async function ensureNetwork() {
+  const net = await provider.getNetwork();
+  if (Number(net.chainId) !== CONFIG.chainId) {
+    switchBtn.style.display = "block";
+    setStatus(`Wrong network. This page is configured for ${CONFIG.chainName} (chain ${CONFIG.chainId}).`);
+    return false;
+  }
+  switchBtn.style.display = "none";
+  return true;
+}
+
+async function connect() {
+  if (!window.ethereum) {
+    setStatus("No wallet found. Install a BNB Chain wallet (e.g. Binance Wallet or MetaMask) and reload.");
+    return;
+  }
+  // Standard injected-wallet connection. (QR-code / pairing-code login is
+  // intentionally NOT used.)
+  provider = new ethers.BrowserProvider(window.ethereum);
+  try {
+    const accounts = await provider.send("eth_requestAccounts", []);
+    account = accounts[0];
+  } catch {
+    setStatus("Connection rejected in the wallet.");
+    return;
+  }
+  $("wallet").textContent = short(account);
+  connectBtn.style.display = "none";
+  claimBtn.style.display = "block";
+  if (await ensureNetwork()) {
+    await refreshGlobals();
+    await refreshUser();
+  } else {
+    claimBtn.disabled = true;
+  }
+}
+
+switchBtn.addEventListener("click", async () => {
+  try {
+    await window.ethereum.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: "0x" + CONFIG.chainId.toString(16) }],
+    });
+  } catch (e) {
+    setStatus("Network switch failed: " + (e.message || e));
+  }
+});
+
+claimBtn.addEventListener("click", async () => {
+  if (!account) return;
+  claimBtn.disabled = true;
+  setStatus("Confirm the claim in your wallet…");
+  try {
+    const signer = await provider.getSigner();
+    const c = new ethers.Contract(CONFIG.contractAddress, ABI, signer);
+    const tx = await c.claim();
+    setStatus("Transaction sent — waiting for confirmation…");
+    await tx.wait();
+    setStatus("Badge claimed. See you tomorrow!");
+    await refreshGlobals();
+    await refreshUser();
+  } catch (e) {
+    const reason = e.reason || e.shortMessage || e.message || "Transaction failed";
+    setStatus("Claim failed: " + reason);
+    claimBtn.disabled = false;
+    await refreshUser();
+  }
+});
+
+connectBtn.addEventListener("click", connect);
+
+if (window.ethereum) {
+  window.ethereum.on("accountsChanged", () => location.reload());
+  window.ethereum.on("chainChanged", () => location.reload());
+  // Best-effort: show global counters before connecting.
+  provider = new ethers.BrowserProvider(window.ethereum);
+  refreshGlobals();
+}
+
+if (CONFIG.explorer) {
+  $("contractLink").href = `${CONFIG.explorer}/address/${CONFIG.contractAddress}`;
+} else {
+  $("contractLink").removeAttribute("href"); // local deployment: no explorer page
+}
+$("contractLink").textContent = short(CONFIG.contractAddress);
+</script>
+</body>
+</html>
